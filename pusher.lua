@@ -3,7 +3,7 @@
 --PUSHER
 --fuka@fuxoft.cz
 
-_G.VERSION = string.match([[*<= Version '20180406b' =>*]], "'(.*)'")
+_G.VERSION = string.match([[*<= Version '20180928a' =>*]], "'(.*)'")
 
 local function myerror(err)
 	print("ERROR")
