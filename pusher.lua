@@ -3,7 +3,7 @@
 --PUSHER
 --fuka@fuxoft.cz
 
-_G.VERSION = string.match([[*<= Version '20180928b' =>*]], "'(.*)'")
+_G.VERSION = string.match([[*<= Version '20180928c' =>*]], "'(.*)'")
 
 local function myerror(err)
 	print("ERROR")
@@ -120,7 +120,7 @@ local function pop_from()
 end
 
 local function main()
-	_G.OPTS = parse_options({"dir", "push_to", "data", "pop_from", "remove", "autoremove", "no_id", "all", "purge_repo"})
+	_G.OPTS = parse_options({"dir", "push_to", "data", "pop_from", "remove", "autoremove", "no_id", "all", "purge_repo", "version"})
 	OPTS.dir = OPTS.dir or "/tmp/fuxoft_pusher/"
 	if not OPTS.dir:match("/$") then
 		OPTS.dir = OPTS.dir .. "/"
@@ -152,6 +152,9 @@ local function main()
 		end
 	elseif OPTS.purge_repo then
 		purge_repo()
+		print("OK")
+	elseif OPTS.version then
+		print(VERSION)
 		print("OK")
 	else
 		myerror("Don't know what to do.")
