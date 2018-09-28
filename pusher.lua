@@ -3,7 +3,7 @@
 --PUSHER
 --fuka@fuxoft.cz
 
-_G.VERSION = string.match([[*<= Version '20180928a' =>*]], "'(.*)'")
+_G.VERSION = string.match([[*<= Version '20180928b' =>*]], "'(.*)'")
 
 local function myerror(err)
 	print("ERROR")
@@ -99,10 +99,10 @@ local function pop_from()
 			return res
 		end
 		local id = last:match("^.+/(.-)%.")
-		print("id", id)
-		print("last", last)
+		--print("id", id)
+		--print("last", last)
 		local fd = io.open(last)
-		print("fd", fd)
+		--print("fd", fd)
 		if fd then
 			local txt = fd:read("*a")
 			fd:close()

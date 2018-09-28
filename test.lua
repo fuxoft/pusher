@@ -27,7 +27,7 @@ local function random_data(bin)
 end
 
 local function check_data(str)
-	local p1, mid, p2 = str:match("^(.+)%-MIDDLE%-(.+)$")
+	local p1, p2 = str:match("^(.+)%-MIDDLE%-(.+)$")
 	assert(p1 == p2)
 end
 
@@ -41,7 +41,31 @@ local function main()
 		fd:write(random_data(true))
 		fd:close()
 	end
-	exe("pusher pop_from=test all no_id autoremove")
+	--exe("pusher pop_from=test all")
+	--os.exit()
+	local fd = io.popen("pusher pop_from=test all")
+	local readno = 0
+	local function rl()
+		return fd:read("*l")
+	end
+	while true do
+		local resp = rl()
+		if resp == "OK" then
+			break
+		end
+		--print("resp", tostring(resp), #resp)
+		assert(resp == "ITEM")
+		assert(rl() == "DATA")
+		local len = tonumber(rl())
+		local data = fd:read(len)
+		--print("data", data)
+		check_data(data)
+		readno = readno + 1
+		assert(rl() == "ID")
+		local id = rl()
+		exe("pusher remove="..id)		
+	end
+	print("Read "..readno.." items OK")
 end
 
 main()
