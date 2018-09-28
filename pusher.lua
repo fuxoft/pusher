@@ -3,7 +3,7 @@
 --PUSHER
 --fuka@fuxoft.cz
 
-_G.VERSION = string.match([[*<= Version '20180928c' =>*]], "'(.*)'")
+_G.VERSION = string.match([[*<= Version '20180928d' =>*]], "'(.*)'")
 
 local function myerror(err)
 	print("ERROR")
@@ -120,13 +120,18 @@ local function pop_from()
 end
 
 local function main()
-	_G.OPTS = parse_options({"dir", "push_to", "data", "pop_from", "remove", "autoremove", "no_id", "all", "purge_repo", "version"})
-	OPTS.dir = OPTS.dir or "/tmp/fuxoft_pusher/"
+	_G.OPTS = parse_options({"dir", "push_to", "data", "pop_from", "remove", "autoremove", "no_id", "all", "purge_repo", "version", "chmod"})
+	if not OPTS.dir then
+		OPTS.dir = "/var/tmp/fuxoft_pusher/" 
+		OPTS.dir_chmod = true --TODO this is too dirty
+	end
 	if not OPTS.dir:match("/$") then
 		OPTS.dir = OPTS.dir .. "/"
 	end
 	os.execute("mkdir -p "..OPTS.dir)
-
+	if OPTS.dir_chmod then
+		os.execute("chmod 777 "..OPTS.dir)
+	end
 	if OPTS.push_to then
 		push_to()
 		print("OK")
