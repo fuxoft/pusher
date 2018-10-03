@@ -1,71 +1,70 @@
 #!/usr/bin/env luajit
 
-math.randomseed(1)
-
-local function exe(str)
-	print("-------- "..str)
-	os.execute(str)
+local function com(str)
+	local cmd = "curl localhost:8080/"..str
+	print(">>>>> "..cmd)
+	os.execute(cmd)
 end
 
-local function get(str)
-	print("--get--- "..str)
-	local fd = io.popen(str)
-	return fd
-end
-
-local function random_data(bin)
-	if not bin then
-		local str = math.random(999999)
-		return (str.."-MIDDLE-"..str)
-	else
-		local str = ""
-		for i = 1, math.random(100) + 10 do
-			str = str .. string.char(math.random(256) - 1)
-		end
-		return(str.."-MIDDLE-"..str)
+local function binary_message()
+	local res = {}
+	for i = 1, math.random(1000) + 1000 do
+		table.insert(res, string.char(math.random(256)-1))
 	end
+	return table.concat(res)
 end
 
-local function check_data(str)
-	local p1, p2 = str:match("^(.+)%-MIDDLE%-(.+)$")
-	assert(p1 == p2)
+local function prtmsg(data)
+	if #data <50 then
+		return (data)
+	else
+		return("<"..#data.." bytes>")
+	end
 end
 
 local function main()
-	exe("pusher purge_repo=test")
-	exe("pusher purge_repo=test2")
-	for i = 1, 3 do
-		exe("pusher push_to=test data="..random_data())
-		exe("pusher push_to=test2 data="..random_data())
-		local fd = io.popen("pusher push_to=test","w")
-		fd:write(random_data(true))
-		fd:close()
-	end
-	--exe("pusher pop_from=test all")
-	--os.exit()
-	local fd = io.popen("pusher pop_from=test all")
-	local readno = 0
-	local function rl()
-		return fd:read("*l")
-	end
-	while true do
-		local resp = rl()
-		if resp == "OK" then
-			break
+	com("quit=yes_please") --To be sure
+	os.execute("rm -f log.txt")
+	os.execute("rm -f db.txt")
+	os.execute("./pusher.lua port=8080 persistent=db.txt > log.txt &")
+	print("Pusher started.")
+	os.execute("sleep 1")
+	local msgs = 100
+	math.randomseed(1)
+	for i = 1,msgs do
+		local channel = "chan"..math.random(5)
+		local msg
+		if math.random()>0.5 then
+			msg = math.random(999999)..math.random(999999)..math.random(999999)
+			com(string.format("push,channel=%s,message=%s",channel,msg))
+		else
+			msg = binary_message()
+			print("Push binary msg")
+			local fd = assert(io.popen("curl -H 'Expect:' localhost:8080/push,channel="..channel.." --data-binary @-", "w"))
+			fd:write(msg)
+			fd:close()
+			print("Pushed "..prtmsg(msg))
 		end
-		--print("resp", tostring(resp), #resp)
-		assert(resp == "ITEM")
-		assert(rl() == "DATA")
-		local len = tonumber(rl())
-		local data = fd:read(len)
-		--print("data", data)
-		check_data(data)
-		readno = readno + 1
-		assert(rl() == "ID")
-		local id = rl()
-		exe("pusher remove="..id)		
 	end
-	print("Read "..readno.." items OK")
+	--os.exit()
+	math.randomseed(1)
+	for i = 1,msgs do
+		local channel = "chan"..math.random(5)
+		local msg
+		if math.random()>0.5 then
+			msg = math.random(999999)..math.random(999999)..math.random(999999)
+		else
+			msg = binary_message()
+		end
+		local fd = io.popen("wget --quiet localhost:8080/download,channel="..channel.." -O-")
+		local got = fd:read("*a")
+		fd:close()
+		print("got "..prtmsg(got))
+		assert(got == msg, (prtmsg(got).. "~="..prtmsg(msg)))
+	end
+
+	com("quit=yes_please")
+	print("Pusher stopped, OK.")
 end
 
 main()
