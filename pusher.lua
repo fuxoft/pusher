@@ -2,7 +2,7 @@
 --Pusher
 --fuka@fuxoft.cz
 
-_G.VERSION = ([[*<= Version '20181004b' =>*]]):match("'(.+)'")
+_G.VERSION = ([[*<= Version '20181004c' =>*]]):match("'(.+)'")
 _G.SOCKET = require("socket")
 _G.DB = {channels={}}
 
@@ -99,14 +99,14 @@ local function accept(pars)
 	end
 	client:settimeout(1)
 	local p_addr, p_port = client:getpeername()
-	if p_addr == "127.0.0.1" then
+	if true or p_addr == "127.0.0.1" or p_addr == "localhost" or p_addr == "::1" then --TODO address check
 		local headers = {}
 		repeat
 			local line, err = client:receive()
 			if err then
 				return nil, "Header receive error"
 			end
-			print("Header: "..line)
+			--print("Header: "..line)
 			if not headers[1] then
 				headers[1] = line
 			else
@@ -128,25 +128,9 @@ local function accept(pars)
 			result.body = body
 		end
 		return result
-		--[[
-		client:send("HTTP/1.1 200 OK\r\n\r\n")
-		local bodylen = tonumber(headers["content-length"])
-
-		if bodylen then
-			local body, err = client:receive(bodylen)
-			if not body then
-				return nil, err
-			end
-			client:send("AHOJ"..math.random().."\r\n")
-			client:send("Got body bytes: "..#body.."\r\n")
-		end
-		client:send("--BYE--\r\n")
-		print("Closing")
-		client:close()
-		]]
 	else
 		client:close()
-		return nil, "Blocked connection attempt from "..p_addr
+		return nil, "Blocked connection with peer address "..p_addr
 	end
 end
 
