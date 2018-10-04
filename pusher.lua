@@ -2,7 +2,7 @@
 --Pusher
 --fuka@fuxoft.cz
 
-_G.VERSION = ([[*<= Version '20181001a' =>*]]):match("'(.+)'")
+_G.VERSION = ([[*<= Version '20181004b' =>*]]):match("'(.+)'")
 _G.SOCKET = require("socket")
 _G.DB = {channels={}}
 
@@ -404,6 +404,9 @@ end
 
 local function main0()
 	_G.OPTIONS = parse_options(nil, {"port", "persistent"})
+	if OPTIONS.persistent then
+		assert(type(OPTIONS.persistent)=="string", "'persistent' value must be a filename")
+	end
 	OPTIONS.port = OPTIONS.port or 8000
 	::main_loop::
 	local stat, err = pcall(main)
@@ -414,6 +417,7 @@ local function main0()
 		assert(os.execute("sleep "..wait)==0)
 		goto main_loop
 	end
+	error("WTF are we doing down here?")
 end
 
 main0()

@@ -3,7 +3,7 @@
 local function com(str)
 	local cmd = "curl localhost:8080/"..str
 	print(">>>>> "..cmd)
-	os.execute(cmd)
+	assert(0 == os.execute(cmd))
 end
 
 local function binary_message()
@@ -23,7 +23,7 @@ local function prtmsg(data)
 end
 
 local function main()
-	com("quit=yes_please") --To be sure
+	--com("quit=yes_please") --To be sure
 	os.execute("rm -f log.txt")
 	os.execute("rm -f db.txt")
 	os.execute("./pusher.lua port=8080 persistent=db.txt > log.txt &")
