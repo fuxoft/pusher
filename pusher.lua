@@ -2,13 +2,18 @@
 --Pusher
 --fuka@fuxoft.cz
 
-_G.VERSION = ([[*<= Version '20181004c' =>*]]):match("'(.+)'")
-_G.SOCKET = require("socket")
-_G.DB = {channels={}}
+_G.VERSION = ([[*<= Version '20181005d' =>*]]):match("'(.+)'")
+_G.SOCKET = require ("socket.unix")
+
+local function clear_db()
+	_G.DB = {channels={}}
+end
 
 local function log(str)
 	print(os.date()..":",tostring(str))
 end
+
+clear_db()
 
 local function parse_options(args, allowed)
 	if not args then
@@ -17,7 +22,7 @@ local function parse_options(args, allowed)
 		assert(type(args) == "string")
 		local a0 = args
 		args = {}
-		for a in (a0..","):gmatch("(.-),") do
+		for a in (a0.."|"):gmatch("(.-)|") do
 			table.insert(args, a)
 		end
 	end
@@ -84,74 +89,51 @@ local function unique_id()
 end
 
 local function create_server(pars)
-	local server = assert(SOCKET.bind("localhost", assert(pars.port)))
-	--server:setoption("reuseaddr", true)
-	local ip, port = server:getsockname()
+	local server = assert(SOCKET())
+	local bind, err = server:bind(pars.socket)
+	if err then
+		if err:match("ddress already in use") then --Try removing used socket and tretry bind
+			os.execute("rm -f "..pars.socket)
+			server = assert(SOCKET())
+			bind = assert(server:bind(pars.socket))
+		else
+			error(err)
+		end
+	end
+	assert(server:listen())
 	--server:settimeout(2)
 	return server
 end
 
 local function accept(pars)
 	local server = assert(pars.server)
-	local client = server:accept()
+	local client, err = server:accept()
 	if not client then
-		return nil, "Cannot start client"
+		return nil, "Cannot start server: "..err
 	end
 	client:settimeout(1)
-	local p_addr, p_port = client:getpeername()
-	if true or p_addr == "127.0.0.1" or p_addr == "localhost" or p_addr == "::1" then --TODO address check
-		local headers = {}
-		repeat
-			local line, err = client:receive()
-			if err then
-				return nil, "Header receive error"
-			end
-			--print("Header: "..line)
-			if not headers[1] then
-				headers[1] = line
-			else
-				local key, val = line:match("^(.-): (.+)$")
-				if key and val then
-					headers[key:lower()] = val
-				end
-			end
-		until line == ""
-		local result = {headers = headers, client = client}
-		local bodylen = tonumber(headers["content-length"])
 
-		if bodylen then
-			--print("bodylen", bodylen)
-			local body, err = client:receive(bodylen)
-			if not body then
-				return nil, err.." (body)"
-			end
-			result.body = body
-		end
-		return result
-	else
-		client:close()
-		return nil, "Blocked connection with peer address "..p_addr
+	local header, err = client:receive()
+	if err then
+		return nil, "Header receive error: "..err
 	end
+
+	return {client = client, header = header}
 end
 
-local function format_response(tbl)
-	return table.concat(tbl, "\r\n").."\r\n"
-end
-
-local function http_error(text)
+local function sock_error(text)
+	local msg = "ERROR: "..text
 	local client = assert(CONN.client)
-	local msg = {"HTTP/1.1 400 Bad Request","","ERROR: "..text}
-	client:send(format_response(msg))
+	client:send(msg.."\n")
 	client:close()
 end
 
-local function http_response(text)
+local function sock_response(text)
 	if type(text) == "table" then
-		text = table.concat(text, "\r\n")
+		text = table.concat(text, "\n")
 	end
 	local client = assert(CONN.client)
-	local msg = {"HTTP/1.1 200 OK","",text}
-	client:send(format_response(msg))
+	client:send(text.."\n")
 	client:close()
 end
 
@@ -269,32 +251,29 @@ local function main()
 		end
 	end
 
-	local server = assert(create_server({port=OPTIONS.port}))
+	local server = assert(create_server({socket=OPTIONS.socket}))
 
 	while true do
 		DB.changed = nil
 		local conn, err = accept({server=server})
 		if not conn then
-			log("Accept Error: "..err)
+			log("Header accept Error: "..err)
 		else
 			_G.CONN = conn
-			--[[
-			for k,v in pairs (CONN.headers) do
-				print(k, v)
-			end
-			--]]
-			local pars = CONN.headers[1]:match("^.- /(.+) HTTP/%d%.%d")
-			if pars and #pars > 1 then
-				pars, err = parse_options(pars, {"unique_id", "channel", "push", "get", "all", "autodelete", "delete", "no_id", "no_age", "purge_channel", "download", "message", "quit"})
+			--print("header:", conn.header)
+			if #(CONN.header or "") == 0 then
+				sock_error("Empty request")
+			else
+				pars, err = parse_options(CONN.header, {"unique_id", "channel", "push", "get", "all", "autodelete", "delete", "no_id", "no_age", "purge_channel", "message", "length", "quit", "reset"})
 				if not pars then
-					http_error(err)
+					sock_error(err)
 				else
 					CONN.parameters = pars
 					if type(pars.channel) ~= "string" then
 						pars.channel = "default"
 					end
 					if not pars.channel:match("^[%w_]*$") then
-						http_error("Invalid channel id: "..tostring(pars.channel))
+						sock_error("Invalid channel id: "..tostring(pars.channel))
 					else
 						--HERE WE GO
 						if pars.delete then
@@ -309,14 +288,14 @@ local function main()
 								end
 							end
 							::delete_done::
-							http_response("DONE")
+							sock_response("DONE")
 						elseif pars.unique_id then
 							local id = unique_id()
-							http_response(id)
+							sock_response({"ID",id,"DONE"})
 						elseif pars.purge_channel then
 							DB.channels[pars.channel] = nil
 							DB.changed = true
-							http_response("DONE")
+							sock_response("DONE")
 						elseif pars.get then
 							local msgs = get_messages() or {}
 							--print("messages got:", #msgs)
@@ -336,26 +315,17 @@ local function main()
 								end
 							end
 							table.insert(result, "DONE")
-							http_response(result)
-						elseif pars.download then
-							pars.all = nil
-							pars.autodelete = true
-							local msgs = get_messages()
-							if not msgs then
-								--CONN.client:send("HTTP/1.1 404 Not Found\r\n\r\nNo message in channel "..pars.channel.."\r\n")
-								CONN.client:send("HTTP/1.1 404 No message in channel '"..pars.channel.."'\r\n\r\n")
-								CONN.client:close()
-							else
-								assert(not msgs[2])
-								CONN.client:send("HTTP/1.1 200 OK\r\nContent-Length: "..#msgs[1].body.."\r\n\r\n"..msgs[1].body)
-								CONN.client:close()
-							end
+							sock_response(result)
 						elseif pars.push then
 							if not pars.message then
-								pars.message = CONN.body
+								local len = CONN.client:receive() or "?"
+								len = math.floor(tonumber(len) or 0)
+								if len > 0 then
+									pars.message = CONN.client:receive(len) or ""
+								end
 							end
 							if not (pars.message and #pars.message > 0) then
-								http_error("Message body not present or empty")
+								sock_error("Message body not present or empty")
 							else
 								local msg = push_message()
 								local reply = {}
@@ -363,20 +333,23 @@ local function main()
 									reply = {"ID",msg.id}
 								end
 								table.insert(reply, "DONE")
-								http_response(reply)
+								sock_response(reply)
 							end
 						elseif pars.quit=="yes_please" then
 							log("User requested quit")
-							http_response("DONE")
+							sock_response("DONE")
 							os.exit()
+						elseif pars.reset=="yes_please" then
+							log("User requested database reset")
+							clear_db()
+							DB.changed = true
+							sock_response("DONE")
 						else
-							http_error("Don't know what to do.")
+							sock_error("Don't know what to do.")
 						end
 						--END handling of request. Each branch above is responsible for client:close()
 					end
 				end
-			else
-				http_error("Invalid HTTP request: "..CONN.headers[1])
 			end
 		end
 		if OPTIONS.persistent and DB.changed then
@@ -387,11 +360,11 @@ local function main()
 end
 
 local function main0()
-	_G.OPTIONS = parse_options(nil, {"port", "persistent"})
+	_G.OPTIONS = parse_options(nil, {"socket", "persistent"})
 	if OPTIONS.persistent then
 		assert(type(OPTIONS.persistent)=="string", "'persistent' value must be a filename")
 	end
-	OPTIONS.port = OPTIONS.port or 8000
+	OPTIONS.socket = OPTIONS.socket or "/tmp/pusher_socket"
 	::main_loop::
 	local stat, err = pcall(main)
 	if not stat then

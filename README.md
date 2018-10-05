@@ -1,34 +1,30 @@
 # Pusher
 
-Very simple IPC queue accessed by HTTP. Written in pure LuaJIT + LuaSocket (uses no other libraries). Partly inspired by [beanstalkd](https://beanstalkd.github.io/) and [mosquitto](http://www.mosquitto.org/).
+Very simple IPC queue accessed using unix domain sockets. Written in pure LuaJIT + LuaSocket (uses no other libraries). Partly inspired by [beanstalkd](https://beanstalkd.github.io/) and [mosquitto](http://www.mosquitto.org/).
 
 ## Basic concepts
 
-Pusher runs as a server on a chosen port. Pusher can manage any number of channels. Each channel is identified by alphanumeric string. Each chanel acts as a queue (FIFO) of messages. A message can be anything. It's just a sequence of bytes, Pusher doesn't care what it represents. Each message has globally unique id which is used for deleting it. A message cannot be empty.
+Pusher runs as a server on a chosen unix domain socket. Pusher can manage any number of channels. Each channel is identified by alphanumeric string. Each chanel acts as a queue (FIFO) of messages. A message can be anything. It's just a sequence of bytes, Pusher doesn't care what it represents. Each message has globally unique id which is used for deleting it. A message cannot be empty.
 
 Application X pushes message into channel. Application Y gets the message from the channel, handles it and - if the handling is succesful - deletes it from the channel. Deleting can also happen automatically when geting the message.
 
 ## Interface
 
-Pusher is designed to be called from scripts using wget or curl and handling the returned data as a stream (i.e. redirecting the curl output into script's input stream). Request parameters are sent in the URL (not as the GET parameters but right in the URL), separated by a comma. For example see this basic command (assuming that Pusher is running at myserver.com at port 8000):
+The request and its parameters are sent to Pusher as a single line, separated using the "|" character. For example this single-line command:
 
-   curl 'myserver.com:8000/push,channel=MyChannel,message=HelloWorld'
+	push|channel=MyChannel|message=Hello, world|no_id
 
-This pushes the message 'HelloWorld' (10 bytes) to channel 'MyChannel'. The response (best parsed as lines) will be:
+This pushes the message 'Hello, world' (12 bytes) to channel 'MyChannel'. The response (best parsed as lines) will be a single line with the string "DONE". There is an alternative way to send long / non-ASCII messages, explained below.
 
-```
-ID
-abc123
-DONE
-```
-
-Where "'abc123" is the unique ID of this new message.
-
-"DONE" final line always indicates succesful completion of the operation. You can close the connection.
+"DONE" final line always indicates succesful completion of the operation.
 
 When returned instead of "DONE", the line "ERROR: <ErrorMessage>" indicates that something went wrong.
 
-Lines are separated by CRLF ("\r\n") sequence.
+Lines are separated by "\n" character.
+
+Note that the order of parameters does not matter. The example above is exactly equal to:
+
+	channel=MyChannel|no_id|message=Hello, world|push
 
 ## Commands and parameters:
 
@@ -38,19 +34,21 @@ Pushes a message with content MessageData to channel ChannelId and returns its a
 
 If `no_id` is present, the id is not returned (only "DONE").
 
-If `message` parameter is omitted (because the message is too long for URL or contains weird non-printable data), it must be attached as a body of the request. In this case, *don't put any other data (e.g. CRLF) after the body*. The correct example is e.g. (message read from file):
+If `message` parameter is omitted (because the message is too long for URL or contains weird non-printable data or the character "|"), the request line must be followed by the length of the message (as a number on a separate line) and then by the raw body of the message.
 
-	curl -H 'Expect:' 'myserver.com:8000/push,channel=MyChannel --data-binary @datafile.bin'
+That means this one-line request:
 
-Or like this (message read from stdin):
+	push|channel=MyChannel|message=Hello, world|no_id
 
-	curl -H 'Expect:' 'myserver.com:8000/push,channel=MyChannel --data-binary @-'
+is exactly equal to this three-line request:
 
-Note that when using curl, the `-H 'Expect:'` option is necessary when sending message longer than 1024 bytes to prevent sending Expect:100 header and splitting the upload! See the explanation [here](https://gms.tf/when-curl-sends-100-continue.html).
+	push|channel=MyChannel|no_id
+	12
+	Hello, world
 
 ### get,[channel=ChannelId,][no_id,][no_age,][all,][autodelete,]
 
-Returns the first message from channel ChannelId. The message is *not automatically deleted* (by default) and must be deleted using `delete` option. The typical succesful response may look as follows:
+Returns the first message from channel ChannelId. The message is *not automatically deleted* (by default) and must be deleted using `delete` command or using `autodelete` option for `get` command. The typical succesful response to `get` may look as follows (the message is "HelloWorld", its length is 10 bytes, its id is "abc123" and age is 600 seconds):
 
 ```
 MESSAGE
@@ -63,9 +61,9 @@ AGE
 DONE
 ```
 
-I.e. first the string "MESSAGE", then CRLF, then the length of the message (in bytes), then CRLF, then the raw message data, then CRLF, then the string "ID", then CRLF, the message id, then CRLF, then the string "AGE", then CRLF, then the age of the message (in seconds), then CRLF, then the string "DONE" and finally CRLF.
+I.e. first the string "MESSAGE", then the length of the message (in bytes), then CRLF, then the raw message data, then the string "ID", the message id, then the string "AGE", then the age of the message (in seconds), and finally "DONE"
 
-Important: Note that the length of message body is given *without* the trailing CRLF! You have to skip these two bytes manually after you read the message body using fd:read(messageLength). If you are absolutely sure that message is clean string without line breaks, you can ignore the returned length and read the message using the plain fd:read() (as a text line).
+*Very important:* If the message contains the "\n" newline character (or any non-sanitized binary data) you MUST read its body using `client:receive(messageLength)` (not using `client:receive("*l")`) and you also MUST manually skip the "\n" character that follows the message body. Only if you are absolutely sure that message is clean string without line breaks, you can ignore the returned length and read the message using the plain `client:receive("*l)` (or `client:receive()`).
 
 If there are no messages in the channel, only "DONE" is returned.
 
@@ -77,25 +75,13 @@ If `no_id` is present, no message ids are returned.
 
 If `no_age` is present, no message ages are returned.
 
-### download,[channel=ChannelId,]
-
-This is a special form of `get` command. When used, *only the message body* is returned, as a standard HTTP response. Mime-Type is not set. `download` automatically implies `autodelete`, `no_id` and `no_age` options. `download` automatically disables `all` option. For example:
-
-	curl 'myserver.com:8000/download,channel=MyChannel' -o data.bin'
-
-This shell command saves the first available message of channel MyChannel into file data.bin.
-
-If there is no message available in the specified channel, HTTP error 404 is returned. That means you can e.g. use the following command to wait until a message is available and then download it to file data.bin and continue script execution.
-
-	wget 'myserver.com:8000/download,channel=MyChannel' -o data.bin --retry-on-http-error=404 --tries=inf --wairetry=5
-
 ### delete=MsgId
 
 The message with id MsgId is deleted. "DONE" is returned. This command never returns errors (even if the message MsgId does not exist).
 
 ### unique_id
 
-This command returns a globally unique message id (which does not belong to any current or future message). The id is returned as a standard HTTP response body (see `download` above). All other parameters are ignored. Apart from the id itself, nothing else (e.g. "DONE") is returned.
+This command returns the string "ID", followed by a globally unique message id string (which does not belong to any current or future message).
 
 Note that the "uniqueness" is only true during the single Pusher session (unless you use the `persistent` command line option, explained below).
 
@@ -111,9 +97,9 @@ When starting Pusher, command line options are given e.g. as follows:
 
 Options explanation:
 
-### port=int
+### socket=filename
 
-The port on which Pusher should run. If omitted, defaults to 8000.
+The socket on which Pusher listens to requests. If omitted, defaults to `/tmp/pusher_socket`.
 
 ### persistent=filename
 
@@ -127,9 +113,13 @@ If you run several persistent Pusher instances concurrently on the same machine,
 
 Pusher immediately quits.
 
+### reset=yes_please
+
+Clears everything in database, including the unique id counter (effectively a hard restart).
+
 ## Some facts, caveats and possible future improvements
 
-There is no security at all. Any client can connect to Pusher for any operation. However, *only clients from local machine* are allowed to connect. This is currently hardcoded.
+There is no security at all. Any client (that has access to the socket file) can connect to Pusher for any operation.
 
 Pusher is single-threaded. New request is buffered and handled after the previous finishes.
 
