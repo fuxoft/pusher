@@ -28,7 +28,7 @@ Note that the order of parameters does not matter. The example above is exactly 
 
 ## Commands and parameters:
 
-### push,[channel=ChannelId,][message=MessageData,][no_id,]
+### push [channel=ChannelId] [message=MessageData] [no_id]
 
 Pushes a message with content MessageData to channel ChannelId and returns its assigned id. If `channel` is omitted, channel named "default" is assumed. Channel ids are alphanumeric, including the "-" character. They are case-sensitive.
 
@@ -46,7 +46,7 @@ is exactly equal to this three-line request:
 	12
 	Hello, world
 
-### get,[channel=ChannelId,][no_id,][no_age,][all,][autodelete,]
+### get [channel=ChannelId] [no_id] [no_age] [all] [autodelete]
 
 Returns the first message from channel ChannelId. The message is *not automatically deleted* (by default) and must be deleted using `delete` command or using `autodelete` option for `get` command. The typical succesful response to `get` may look as follows (the message is "HelloWorld", its length is 10 bytes, its id is "abc123" and age is 600 seconds):
 
@@ -61,7 +61,7 @@ AGE
 DONE
 ```
 
-I.e. first the string "MESSAGE", then the length of the message (in bytes), then CRLF, then the raw message data, then the string "ID", the message id, then the string "AGE", then the age of the message (in seconds), and finally "DONE"
+I.e. first the string "MESSAGE", then the length of the message (in bytes), then the raw message data, then the string "ID", the message id, then the string "AGE", then the age of the message (in seconds), and finally "DONE". All these items are followed by newlines.
 
 *Very important:* If the message contains the "\n" newline character (or any non-sanitized binary data) you MUST read its body using `client:receive(messageLength)` (not using `client:receive("*l")`) and you also MUST manually skip the "\n" character that follows the message body. Only if you are absolutely sure that message is clean string without line breaks, you can ignore the returned length and read the message using the plain `client:receive("*l)` (or `client:receive()`).
 
@@ -85,7 +85,7 @@ This command returns the string "ID", followed by a globally unique message id s
 
 Note that the "uniqueness" is only true during the single Pusher session (unless you use the `persistent` command line option, explained below).
 
-### purge,[channel=ChannelId]
+### purge [channel=ChannelId]
 
 All messages in channel ChannelId (or channel "default", if omitted) are immediately discarded. "DONE" is returned.
 
@@ -111,11 +111,11 @@ If you run several persistent Pusher instances concurrently on the same machine,
 
 ### quit=yes_please
 
-Pusher immediately quits.
+Pusher immediately quits (the given value must be "yes_please").
 
 ### reset=yes_please
 
-Clears everything in database, including the unique id counter (effectively a hard restart).
+Clears everything in database, including the unique id counter (effectively a hard restart). The given value must be "yes_please".
 
 ## Some facts, caveats and possible future improvements
 
