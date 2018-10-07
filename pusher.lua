@@ -2,15 +2,15 @@
 --Pusher
 --fuka@fuxoft.cz
 
-_G.VERSION = ([[*<= Version '20181005d' =>*]]):match("'(.+)'")
+_G.VERSION = ([[*<= Version '20181007a' =>*]]):match("'(.+)'")
 _G.SOCKET = require ("socket.unix")
 
 local function clear_db()
 	_G.DB = {channels={}}
 end
 
-local function log(str)
-	print(os.date()..":",tostring(str))
+local function log_format(str)
+	return(os.date()..":\t"..tostring(str))
 end
 
 clear_db()
@@ -178,6 +178,7 @@ local function push_message()
 	DB.changed = true
 	while #ch > 100 do
 		table.remove(ch, 1)
+		log("Channel "..channel.." is full")
 	end
 	return msg
 end
@@ -360,10 +361,24 @@ local function main()
 end
 
 local function main0()
-	_G.OPTIONS = parse_options(nil, {"socket", "persistent"})
+	_G.OPTIONS = parse_options(nil, {"socket", "persistent", "logfile"})
 	if OPTIONS.persistent then
 		assert(type(OPTIONS.persistent)=="string", "'persistent' value must be a filename")
 	end
+
+	if OPTIONS.logfile then
+		_G.log = function(str)
+			local fd = assert(io.open(OPTIONS.logfile,"a"))
+			fd:write(log_format(str).."\n")
+			fd:flush()
+			fd:close()
+		end
+	else
+		_G.log = function(str)
+			print(log_format(str))
+		end
+	end
+
 	OPTIONS.socket = OPTIONS.socket or "/tmp/pusher_socket"
 	::main_loop::
 	local stat, err = pcall(main)

@@ -28,6 +28,8 @@ Note that the order of parameters does not matter. The example above is exactly 
 
 ## Commands and parameters:
 
+Note that all commands and parameters are always separated only by "|" character, not by anything else (spaces, commas).
+
 ### push [channel=ChannelId] [message=MessageData] [no_id]
 
 Pushes a message with content MessageData to channel ChannelId and returns its assigned id. If `channel` is omitted, channel named "default" is assumed. Channel ids are alphanumeric, including the "-" character. They are case-sensitive.
@@ -63,7 +65,7 @@ DONE
 
 I.e. first the string "MESSAGE", then the length of the message (in bytes), then the raw message data, then the string "ID", the message id, then the string "AGE", then the age of the message (in seconds), and finally "DONE". All these items are followed by newlines.
 
-*Very important:* If the message contains the "\n" newline character (or any non-sanitized binary data) you MUST read its body using `client:receive(messageLength)` (not using `client:receive("*l")`) and you also MUST manually skip the "\n" character that follows the message body. Only if you are absolutely sure that message is clean string without line breaks, you can ignore the returned length and read the message using the plain `client:receive("*l)` (or `client:receive()`).
+*Very important:* If the message contains the "\n" newline character (or any non-sanitized binary data) you MUST read its body using `client:receive(messageLength)` (not using `client:receive("*l")`) and you also MUST manually skip the "\n" character that follows the message body. Only if you are absolutely sure that message is clean string without line breaks, you can ignore the returned length and read the message using the plain `client:receive("*l")` (or `client:receive()`, which is the same thing).
 
 If there are no messages in the channel, only "DONE" is returned.
 
@@ -89,6 +91,14 @@ Note that the "uniqueness" is only true during the single Pusher session (unless
 
 All messages in channel ChannelId (or channel "default", if omitted) are immediately discarded. "DONE" is returned.
 
+### quit=yes_please
+
+Pusher immediately quits (the given value must be "yes_please").
+
+### reset=yes_please
+
+Clears everything in database, including the unique id counter (effectively a hard restart). The given value must be "yes_please".
+
 #### Command line options
 
 When starting Pusher, command line options are given e.g. as follows:
@@ -109,21 +119,15 @@ The whole database is currently written to disk after each state change (i.e. af
 
 If you run several persistent Pusher instances concurrently on the same machine, make sure that each of them uses different database file!
 
-### quit=yes_please
+### logfile=filename
 
-Pusher immediately quits (the given value must be "yes_please").
-
-### reset=yes_please
-
-Clears everything in database, including the unique id counter (effectively a hard restart). The given value must be "yes_please".
+Normally, Pusher does some basic logging to stdout. Use this option to log to file. Use `logfile=/dev/null` to prevent any logging.
 
 ## Some facts, caveats and possible future improvements
 
 There is no security at all. Any client (that has access to the socket file) can connect to Pusher for any operation.
 
 Pusher is single-threaded. New request is buffered and handled after the previous finishes.
-
-Pusher server does some very primitive logging to stdout.
 
 The connections have 1 second hardcoded timeout. I.e. you must send your request (including the message data) sooner than 1 second after establishing connection.
 
